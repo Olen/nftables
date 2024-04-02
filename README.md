@@ -62,6 +62,11 @@ FORWARD/417               0        0  jump DOCKER                           ip  
 
 ```
 
+If your terminal supports color, the output is even easier to read:
+
+![image](https://github.com/Olen/nftables/assets/203184/465644a1-3d60-481a-8fdf-108ec682dfd9)
+
+
 
 The output is ordered according to the chain priority, and you can easily get a good overview over what chains and rules are in use and how they are configured.
 
