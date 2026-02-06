@@ -1,8 +1,0 @@
-tabulate
-nftables >= 1.0.9
-json
-pprint
-sys
-typing
-argparse
-

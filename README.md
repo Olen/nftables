@@ -1,9 +1,50 @@
-# nftables
+# nft-viewer
 
 > [!IMPORTANT]
 > This project is NOT part of the official [nftables](https://netfilter.org/projects/nftables/index.html) project
 
-This tool a simple way to display information from nf-tables in a more iptables-like format.
+A simple tool to display information from nf-tables in a more iptables-like format.
+
+## Installation
+
+**Requirements:** `python3-nftables` system package must be installed.
+
+```bash
+# Fedora/RHEL
+dnf install python3-nftables
+
+# Debian/Ubuntu
+apt install python3-nftables
+```
+
+**Install from private registry:**
+
+```bash
+uv tool install --extra-index-url https://git.olen.net/api/packages/Olen/pypi/simple/ nft-viewer
+```
+
+**Or install from source:**
+
+```bash
+git clone https://git.olen.net/olen/nftables.git
+cd nftables
+uv tool install .
+```
+
+## Usage
+
+```bash
+nft-viewer              # Show all rules
+nft-viewer -L input     # Show only input hook
+nft-viewer -s           # Show all sets
+nft-viewer -s my-set    # Show specific set
+nft-viewer -j           # Output raw JSON
+nft-viewer -x           # Show exact counter values (no K/M/G)
+```
+
+## Overview
+
+This tool
 
 It complements the official `nft` tool, and tries to find a space between `nft` - where the output can be quite complex to follow, and `iptables-nft` - which I felt was to limited.
 
@@ -15,7 +56,7 @@ You can chose to display the entire ruleset, or just a single `hook` (input, out
 
 ### Display a single hook
 
-nftables -L input
+nft-viewer -L input
 ```
 hook      # chains
 ------  ----------
@@ -41,7 +82,7 @@ INPUT/174         0        0  drop             ip       ip saddr == @threatfox
 
 ```
 
-sudo ./nftables -L forward                                                                                    
+sudo nft-viewer -L forward                                                                                    
 ```
 hook       # chains                                                                                                            
 -------  ----------                                                                                                            
@@ -72,7 +113,7 @@ The output is ordered according to the chain priority, and you can easily get a 
 
 ### Display a set
 
-nftables -s my-set
+nft-viewer -s my-set
 ```
 add set inet filter my-set { type ipv4_addr; size 65536; }
 flush set inet filter my-set
@@ -81,7 +122,7 @@ add element inet filter my-set { 10.40.0.0/16 comment "another network" }
 add element inet filter my-set { 172.16.0.0/16 comment "lan" }
 ```
 
-Output here is actually the format to recreate the set, so you can easily run this command and redirect to a file (`nftables -s my-set > my-set.nft`, add or modify entries, and just run `nft -f my-set.nft` to update it.
+Output here is actually the format to recreate the set, so you can easily run this command and redirect to a file (`nft-viewer -s my-set > my-set.nft`, add or modify entries, and just run `nft -f my-set.nft` to update it.
 
 
 ## Acknowledgments

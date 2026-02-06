@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nft-viewer"
+version = "0.1.0"
+description = "iptables-like output for nftables"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.10"
+authors = [
+    { name = "Olen" }
+]
+keywords = ["nftables", "firewall", "iptables"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Networking :: Firewalls",
+]
+dependencies = [
+    "tabulate",
+]
+
+[project.scripts]
+nft-viewer = "nft_viewer.wrapper:main"
+
+[project.urls]
+Repository = "https://git.olen.net/olen/nftables"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nft_viewer"]
+
+# Note: This package requires python3-nftables system package
+# Install via: dnf install python3-nftables (Fedora) or apt install python3-nftables (Debian/Ubuntu)

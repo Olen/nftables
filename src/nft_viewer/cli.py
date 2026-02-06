@@ -1,114 +1,14 @@
-#!/usr/bin/python3
+"""nft-viewer CLI - iptables-like output for nftables"""
 
 from tabulate import tabulate
 
 import nftables
 import json
-import pprint
 import sys
 import typing
 import argparse
 
-
-parser = argparse.ArgumentParser(
-    prog='nftables',
-    description='iptables like output of nf_tables',
-    epilog='')
-
-
-parser.add_argument('-L', '--hook', choices=['all', 'ingress', 'input', 'forward', 'output', 'prerouting', 'postrouting'], help="List only tables for a single hook")
-parser.add_argument('-c', '--chain', help="List only a single chain")
-parser.add_argument('-t', '--table', help="List only a single table")
-parser.add_argument('-s', '--set', nargs='?', action='store', const='all', help="List sets instead of chains and tables")
-parser.add_argument('-x', '--exact', action='store_true', help="Display counters as exact numbers instead of K, M, G etc.")
-parser.add_argument('-j', '--json', action='store_true', help="Output raw JSON")
-
-args = parser.parse_args()
-
-
-def main():
-
-    table = []
-    
-    t_ingress = []
-    t_prerouting = []
-    t_input = []
-    t_forward = []
-    t_output = []
-    t_postrouting = []
-    t_unhooked = []
-    
-    rules = {}
-    tables = {}
-    chains = {}
-    sets = {}
-    
-    nft = nftables.Nftables()
-    nft.set_json_output(True)
-    nft.set_handle_output(True)
-    nft.set_numeric_prio_output(True)
-    
-    rc, output, error = nft.cmd("list ruleset")
-    
-    try:
-        ruleset = json.loads(output)
-    except:
-        print("Unable to load ruleset")
-        sys.exit(1)
-    
-    if args.json:
-        pprint.pprint(ruleset)
-        sys.exit()
-    
-    
-    for rule in ruleset['nftables']:
-        if "set" in rule:
-            sets[rule['set']['name']] = rule['set']
-        if "chain" in rule:
-            if rule['chain'].get('type') not in chains:
-                chains[rule['chain'].get('type')] = {}
-            chains[rule['chain'].get('type')][rule['chain']['name']] = rule['chain']
-            if "prio" not in rule['chain']:
-                chains[rule['chain'].get('type')][rule['chain']['name']]['prio'] = 0
-        if "table" in rule:
-            tables[rule['table']['name']] = rule['table']
-        if "rule" in rule:
-            r_chain = rule["rule"]["chain"]
-            if r_chain not in rules:
-                rules[r_chain] = []
-            rules[r_chain].append(rule)
-    # pprint.pprint(chains)
-    for t_chains in chains.values():
-        chains = dict(sorted(t_chains.items(), key = lambda x: x[1]['prio']))
-    
-        for chain in chains.items():
-            if "hook" in chain[1]:
-                if chain[1]["hook"] == "input":
-                    t_input.append(chain)
-                if chain[1]["hook"] == "output":
-                    t_output.append(chain)
-                if chain[1]["hook"] == "forward":
-                    t_forward.append(chain)
-                if chain[1]["hook"] == "ingress":
-                    t_ingress.append(chain)
-                if chain[1]["hook"] == "prerouting":
-                    t_prerouting.append(chain)
-                if chain[1]["hook"] == "postrouting":
-                    t_postrouting.append(chain)
-            else:
-                t_unhooked.append(chain)
-
-    # pprint.pprint(t_input)
-    # pprint.pprint(t_output)
-    # sys.exit()
-    
-    if args.set:
-        show_sets(sets)
-    else:
-        show_tables(t_ingress, t_prerouting, t_input, t_forward, t_output, t_postrouting, t_unhooked, rules)
-
-
-
+from nft_viewer import __version__
 
 
 class Colors:
@@ -142,12 +42,6 @@ class Colors:
         for _ in dir():
             if isinstance(_, str) and _[0] != "_":
                 locals()[_] = ""
-    else:
-        # set Windows console in VT mode
-        if __import__("platform").system() == "Windows":
-            kernel32 = __import__("ctypes").windll.kernel32
-            kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
-            del kernel32
 
     @staticmethod
     def Black(string: str) -> str:
@@ -195,7 +89,7 @@ class Colors:
     def LightCyan(string: str) -> str:
         return f"{Colors.LIGHT_CYAN}{string}{Colors.END}"
     @staticmethod
-    def LightWHITE(string: str) -> str:
+    def LightWhite(string: str) -> str:
         return f"{Colors.LIGHT_WHITE}{string}{Colors.END}"
     @staticmethod
     def Bold(string: str) -> str:
@@ -238,10 +132,8 @@ class HumanVals:
 
     METRIC_LABELS: typing.List[str] = [" ", "K", "M", "G", "T", "P", "E", "Z", "Y"]
     BINARY_LABELS: typing.List[str] = [" ", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi", "Yi"]
-    # ^ Technically this is correct, but I'm saving one char in my output.
-    # BINARY_LABELS: typing.List[str] = [" ", "K", "M", "G", "T", "P", "E", "Z", "Y"]
-    PRECISION_OFFSETS: typing.List[float] = [0.5, 0.05, 0.005, 0.0005] # PREDEFINED FOR SPEED.
-    PRECISION_FORMATS: typing.List[str] = ["{}{:.0f} {}", "{}{:.1f} {}", "{}{:.2f} {}", "{}{:.3f} {}"] # PREDEFINED FOR SPEED.
+    PRECISION_OFFSETS: typing.List[float] = [0.5, 0.05, 0.005, 0.0005]
+    PRECISION_FORMATS: typing.List[str] = ["{}{:.0f} {}", "{}{:.1f} {}", "{}{:.2f} {}", "{}{:.3f} {}"]
 
     @staticmethod
     def format(num: typing.Union[int, float], metric: bool=False, precision: int=1) -> str:
@@ -260,25 +152,13 @@ class HumanVals:
         unit_step_thresh = unit_step - HumanVals.PRECISION_OFFSETS[precision]
 
         is_negative = num < 0
-        if is_negative: # Faster than ternary assignment or always running abs().
+        if is_negative:
             num = abs(num)
 
         for unit in unit_labels:
-
             if num < unit_step_thresh:
-                # VERY IMPORTANT:
-                # Only accepts the CURRENT unit if we're BELOW the threshold where
-                # float rounding behavior would place us into the NEXT unit: F.ex.
-                # when rounding a float to 1 decimal, any number ">= 1023.95" will
-                # be rounded to "1024.0". Obviously we don't want ugly output such
-                # as "1024.0 KiB", since the proper term for that is "1.0 MiB".
                 break
-
             if unit != last_label:
-                # We only shrink the number if we HAVEN'T reached the last unit.
-                # Note: These looped divisions accumulate floating point rounding
-                # errors, but each new division pushes the rounding errors further
-                # and further down in the decimals, so it doesn't matter at all.
                 num /= unit_step
 
         if unit == " ":
@@ -287,9 +167,7 @@ class HumanVals:
         return HumanVals.PRECISION_FORMATS[precision].format("-" if is_negative else "", num, unit)
 
 
-
-def show_expr(expr, family):
-    tab = []
+def show_expr(expr, family, args):
     matches = []
     target = None
     c_packets = None
@@ -320,9 +198,15 @@ def show_expr(expr, family):
                 if right.get("prefix"):
                     right = f"{right['prefix']['addr']}/{right['prefix']['len']}"
                     op = "in"
-                if right.get("set"):
+                elif right.get("set"):
                     right = str(right["set"])
                     op = "in"
+                elif right.get("range"):
+                    # Handle range elements like {'range': [0, 1024]}
+                    right = f"{right['range'][0]}-{right['range'][1]}"
+                    op = "in"
+                else:
+                    right = str(right)
             else:
                 right = str(right)
             matches.append(f"{left} {op} {right}")
@@ -353,10 +237,18 @@ def show_expr(expr, family):
             target = f"{Colors.Yellow('masquerade')}"
         elif "log" in e:
             log = f"level: {e['log'].get('level')}, prefix: \"{e['log'].get('prefix')}\""
+        elif "snat" in e or "dnat" in e or "redirect" in e:
+            # NAT expressions
+            nat_type = "snat" if "snat" in e else ("dnat" if "dnat" in e else "redirect")
+            target = Colors.Yellow(nat_type)
+        elif "goto" in e:
+            target = f"{Colors.Purple('goto')} {e['goto']['target']}"
+        elif "queue" in e or "limit" in e or "quota" in e or "notrack" in e:
+            # Known expressions we don't need to display as target
+            pass
         else:
-            print("Unknwon expression:")
-            print(e)
-            sys.exit()
+            # Unknown expression - add to matches for visibility
+            matches.append(f"[unknown: {list(e.keys())}]")
     if len(matches) == 0:
         matches.append("*")
     if len(str(matches)) > 60:
@@ -367,7 +259,7 @@ def show_expr(expr, family):
     return [c_packets, c_bytes, target, log, family, m]
 
 
-def list_rules(name, table, rules, split = False):
+def list_rules(name, table, rules, args, split=False):
     r_table = []
     c_table = []
     t_head = f"Hook: {Colors.Inverse(Colors.Yellow(name))}, Chains: {len(table)}"
@@ -377,19 +269,21 @@ def list_rules(name, table, rules, split = False):
             chain_name = chain[0]
             if args.chain and args.chain != chain_name and args.chain != "all":
                 continue
-            if  args.table and args.table != chain[1]["table"] and args.table != "all":
+            if args.table and args.table != chain[1]["table"] and args.table != "all":
                 continue
             c_table.append([chain[1]["name"], chain[1]["table"], chain[1]["prio"], chain[1].get('policy')])
             if split:
                 c_head = tabulate(c_table, headers=["chain", "table", "priority", "default"], numalign="right")
                 c_table = []
-            try:
+            if chain_name in rules:
                 for rule in rules[chain_name]:
-                    if rule['rule']['table'] == chain[1]["table"]:
-                        tab = show_expr(rule["rule"]["expr"], rule["rule"]["family"])
-                        r_table.append([rule['rule']['table'], Colors.LightGray(f"{chain_name}/{rule['rule']['handle']}")] + tab)
-            except:
-                pass
+                    try:
+                        if rule['rule']['table'] == chain[1]["table"]:
+                            tab = show_expr(rule["rule"]["expr"], rule["rule"]["family"], args)
+                            r_table.append([rule['rule']['table'], Colors.LightGray(f"{chain_name}/{rule['rule']['handle']}")] + tab)
+                    except KeyError as e:
+                        # Skip malformed rules but continue processing
+                        print(f"Warning: skipping malformed rule in {chain_name}: {e}", file=sys.stderr)
             if split:
                 if len(r_table) > 0:
                     if t_head:
@@ -409,44 +303,183 @@ def list_rules(name, table, rules, split = False):
             print("")
             print(tabulate(r_table, headers=["table", "handle", "pkts", "bytes", "target", "log", "proto", "filter"], colalign=("left", "left", "right", "right", "left", "left", "left", "left")))
             print("")
-    
 
-def show_tables(t_ingress, t_prerouting, t_input, t_forward, t_output, t_postrouting, t_unhooked, rules):
+
+def show_tables(t_ingress, t_prerouting, t_input, t_forward, t_output, t_postrouting, t_unhooked, rules, args):
     if not args.hook or args.hook == 'all' or args.hook == 'ingress':
-        list_rules("ingress", t_ingress, rules)
+        list_rules("ingress", t_ingress, rules, args)
     if not args.hook or args.hook == 'all' or args.hook == 'prerouting':
-        list_rules("prerouting", t_prerouting, rules)
+        list_rules("prerouting", t_prerouting, rules, args)
     if not args.hook or args.hook == 'all' or args.hook == 'input':
-        list_rules("input", t_input, rules)
+        list_rules("input", t_input, rules, args)
     if not args.hook or args.hook == 'all' or args.hook == 'forward':
-        list_rules("forward", t_forward, rules)
+        list_rules("forward", t_forward, rules, args)
     if not args.hook or args.hook == 'all' or args.hook == 'output':
-        list_rules("output", t_output, rules)
+        list_rules("output", t_output, rules, args)
     if not args.hook or args.hook == 'all' or args.hook == 'postrouting':
-        list_rules("postrouting", t_postrouting, rules)
+        list_rules("postrouting", t_postrouting, rules, args)
     if not args.hook or args.hook == 'all':
-        list_rules("unhooked", t_unhooked, rules, split=True)
+        list_rules("unhooked", t_unhooked, rules, args, split=True)
 
-def show_sets(sets):
+
+def format_set_element(val):
+    """Format a set element value to nft syntax."""
+    if isinstance(val, str):
+        return val
+    elif isinstance(val, int):
+        return str(val)
+    elif isinstance(val, dict):
+        if 'prefix' in val:
+            return f"{val['prefix']['addr']}/{val['prefix']['len']}"
+        elif 'range' in val:
+            return f"{val['range'][0]}-{val['range'][1]}"
+        else:
+            return str(val)
+    else:
+        return str(val)
+
+
+def show_sets(sets, args):
     for set_name, set_values in sets.items():
         if args.set == 'all' or args.set == set_name:
-            print (f"add set {set_values['family']} {set_values['table']} {set_name} {{ type {set_values['type']}; size {set_values.get('size', 65535)}; }}")
-            print (f"flush set {set_values['family']} {set_values['table']} {set_name}")
-            if not 'elem' in set_values:
+            set_type = set_values.get('type', 'unknown')
+            flags = set_values.get('flags', [])
+            size = set_values.get('size', 65535)
+
+            # Build set definition
+            set_def = f"type {set_type}; size {size};"
+            if flags:
+                set_def += f" flags {','.join(flags)};"
+
+            print(f"add set {set_values['family']} {set_values['table']} {set_name} {{ {set_def} }}")
+            print(f"flush set {set_values['family']} {set_values['table']} {set_name}")
+
+            if 'elem' not in set_values:
                 continue
+
             for elem in set_values['elem']:
-                if isinstance(elem, str):
-                    element = elem
-                elif 'elem' in elem:
-                    elemval = elem['elem']['val']
-                    if isinstance(elemval, str):
-                        element = elemval
-                    elif 'prefix' in elemval:
-                        element = elemval['prefix']['addr'] + "/" + str(elemval['prefix']['len'])
-                    if 'comment' in elem['elem']:
-                        element += ' comment "' + elem['elem']['comment'] + '"'
-                print (f"add element {set_values['family']} {set_values['table']} {set_name} {{ {element} }}")
-    
+                element = None
+                comment = None
+
+                if isinstance(elem, (str, int)):
+                    element = str(elem)
+                elif isinstance(elem, dict):
+                    if 'prefix' in elem:
+                        element = format_set_element(elem)
+                    elif 'range' in elem:
+                        element = format_set_element(elem)
+                    elif 'elem' in elem:
+                        # Wrapped element with metadata
+                        elemval = elem['elem']['val']
+                        element = format_set_element(elemval)
+                        if 'comment' in elem['elem']:
+                            comment = elem['elem']['comment']
+                    else:
+                        element = str(elem)
+                else:
+                    element = str(elem)
+
+                if element:
+                    if comment:
+                        print(f"add element {set_values['family']} {set_values['table']} {set_name} {{ {element} comment \"{comment}\" }}")
+                    else:
+                        print(f"add element {set_values['family']} {set_values['table']} {set_name} {{ {element} }}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog='nft-viewer',
+        description='iptables like output of nf_tables',
+        epilog='')
+
+    parser.add_argument('-L', '--hook', choices=['all', 'ingress', 'input', 'forward', 'output', 'prerouting', 'postrouting'], help="List only tables for a single hook")
+    parser.add_argument('-c', '--chain', help="List only a single chain")
+    parser.add_argument('-t', '--table', help="List only a single table")
+    parser.add_argument('-s', '--set', nargs='?', action='store', const='all', help="List sets instead of chains and tables")
+    parser.add_argument('-x', '--exact', action='store_true', help="Display counters as exact numbers instead of K, M, G etc.")
+    parser.add_argument('-j', '--json', action='store_true', help="Output raw JSON")
+    parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {__version__}')
+
+    args = parser.parse_args()
+
+    t_ingress = []
+    t_prerouting = []
+    t_input = []
+    t_forward = []
+    t_output = []
+    t_postrouting = []
+    t_unhooked = []
+
+    rules = {}
+    tables = {}
+    chains = {}
+    sets = {}
+
+    nft = nftables.Nftables()
+    nft.set_json_output(True)
+    nft.set_handle_output(True)
+    nft.set_numeric_prio_output(True)
+
+    rc, output, error = nft.cmd("list ruleset")
+
+    if rc != 0:
+        if "Permission denied" in str(error) or "Operation not permitted" in str(error):
+            print("Permission denied - run with sudo", file=sys.stderr)
+        else:
+            print(f"nftables error: {error}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        ruleset = json.loads(output)
+    except json.JSONDecodeError as e:
+        print(f"Unable to parse nftables output: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.json:
+        print(json.dumps(ruleset, indent=2))
+        sys.exit(0)
+
+    for rule in ruleset['nftables']:
+        if "set" in rule:
+            sets[rule['set']['name']] = rule['set']
+        if "chain" in rule:
+            if rule['chain'].get('type') not in chains:
+                chains[rule['chain'].get('type')] = {}
+            chains[rule['chain'].get('type')][rule['chain']['name']] = rule['chain']
+            if "prio" not in rule['chain']:
+                chains[rule['chain'].get('type')][rule['chain']['name']]['prio'] = 0
+        if "table" in rule:
+            tables[rule['table']['name']] = rule['table']
+        if "rule" in rule:
+            r_chain = rule["rule"]["chain"]
+            if r_chain not in rules:
+                rules[r_chain] = []
+            rules[r_chain].append(rule)
+
+    for t_chains in chains.values():
+        sorted_chains = dict(sorted(t_chains.items(), key=lambda x: x[1]['prio']))
+
+        for chain in sorted_chains.items():
+            if "hook" in chain[1]:
+                if chain[1]["hook"] == "input":
+                    t_input.append(chain)
+                if chain[1]["hook"] == "output":
+                    t_output.append(chain)
+                if chain[1]["hook"] == "forward":
+                    t_forward.append(chain)
+                if chain[1]["hook"] == "ingress":
+                    t_ingress.append(chain)
+                if chain[1]["hook"] == "prerouting":
+                    t_prerouting.append(chain)
+                if chain[1]["hook"] == "postrouting":
+                    t_postrouting.append(chain)
+            else:
+                t_unhooked.append(chain)
+
+    if args.set:
+        show_sets(sets, args)
+    else:
+        show_tables(t_ingress, t_prerouting, t_input, t_forward, t_output, t_postrouting, t_unhooked, rules, args)
 
 
 if __name__ == "__main__":
