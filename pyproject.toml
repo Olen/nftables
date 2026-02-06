@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nft-viewer"
-version = "0.1.0"
+version = "0.1.1"
 description = "iptables-like output for nftables"
 readme = "README.md"
 license = "GPL-3.0-or-later"
@@ -38,6 +38,9 @@ Repository = "https://git.olen.net/olen/nftables"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nft_viewer"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
 
 # Note: This package requires python3-nftables system package
 # Install via: dnf install python3-nftables (Fedora) or apt install python3-nftables (Debian/Ubuntu)
